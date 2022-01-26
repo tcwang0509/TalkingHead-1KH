@@ -15,7 +15,7 @@ TalkingHead-1KH is a talking-head dataset consisting of YouTube videos, original
 > https://nvlabs.github.io/face-vid2vid/<br>
 > https://arxiv.org/abs/2011.15126.pdf
 
-The dataset consists of 500k video clips, of which about 80k are greater than 512x512 resolution. Only videos under permissive licenses are included.
+The dataset consists of 500k video clips, of which about 80k are greater than 512x512 resolution. Only videos under permissive licenses are included. Note that the number of videos differ from that in the original paper because a more robust preprocessing script was used to split the videos.
 For business inquiries, please visit our website and submit the form: [NVIDIA Research Licensing](https://www.nvidia.com/en-us/research/inquiries/).
 
 
