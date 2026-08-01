@@ -5,6 +5,7 @@
 import argparse
 import multiprocessing as mp
 import os
+from fractions import Fraction
 from functools import partial
 from time import time as timer
 
@@ -24,12 +25,15 @@ parser.add_argument('--num_workers', type=int, default=8,
 args = parser.parse_args()
 
 
-def get_h_w(filepath):
+def get_media_info(filepath):
     probe = ffmpeg.probe(filepath)
     video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
     height = int(video_stream['height'])
     width = int(video_stream['width'])
-    return height, width
+    frame_rate = video_stream.get('avg_frame_rate', video_stream.get('r_frame_rate'))
+    fps = float(Fraction(frame_rate))
+    has_audio = any(stream['codec_type'] == 'audio' for stream in probe['streams'])
+    return height, width, fps, has_audio
 
 
 def trim_and_crop(input_dir, output_dir, clip_params):
@@ -46,15 +50,26 @@ def trim_and_crop(input_dir, output_dir, clip_params):
         print('Input file %s does not exist, skipping' % (input_filepath))
         return
 
-    h, w = get_h_w(input_filepath)
+    h, w, fps, has_audio = get_media_info(input_filepath)
     t = int(T / H * h)
     b = int(B / H * h)
     l = int(L / W * w)
     r = int(R / W * w)
-    stream = ffmpeg.input(input_filepath)
-    stream = ffmpeg.trim(stream, start_frame=S, end_frame=E+1)
-    stream = ffmpeg.crop(stream, l, t, r-l, b-t)
-    stream = ffmpeg.output(stream, output_filepath)
+    input_stream = ffmpeg.input(input_filepath)
+    video_stream = ffmpeg.trim(input_stream.video, start_frame=S, end_frame=E+1)
+    video_stream = ffmpeg.setpts(video_stream, 'PTS-STARTPTS')
+    video_stream = ffmpeg.crop(video_stream, l, t, r-l, b-t)
+
+    if has_audio:
+        audio_stream = ffmpeg.filter(
+            input_stream.audio, 'atrim', start=S / fps, end=(E + 1) / fps
+        )
+        audio_stream = ffmpeg.filter(audio_stream, 'asetpts', 'PTS-STARTPTS')
+        stream = ffmpeg.output(
+            video_stream, audio_stream, output_filepath, acodec='aac', shortest=None
+        )
+    else:
+        stream = ffmpeg.output(video_stream, output_filepath)
     ffmpeg.run(stream)
 
 

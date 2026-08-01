@@ -1,10 +1,11 @@
 import argparse
+import glob
 import multiprocessing as mp
 import os
 from functools import partial
 from time import time as timer
 
-from pytube import YouTube
+from pytubefix import YouTube
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
@@ -18,16 +19,31 @@ args = parser.parse_args()
 
 
 def download_video(output_dir, video_id):
-    r"""Download video."""
-    video_path = '%s/%s.mp4' % (output_dir, video_id)
-    if not os.path.isfile(video_path):
+    r"""Download highest-quality video and audio tracks as paired files."""
+    video_path = os.path.join(output_dir, '%s.video.mp4' % video_id)
+    audio_paths = glob.glob(os.path.join(output_dir, '%s.audio.*' % video_id))
+    if not (os.path.isfile(video_path) and audio_paths):
         try:
-            # Download the highest quality mp4 stream.
             yt = YouTube('https://www.youtube.com/watch?v=%s' % (video_id))
-            stream = yt.streams.filter(subtype='mp4', only_video=True, adaptive=True).first()
-            if stream is None:
-                stream = yt.streams.filter(subtype='mp4').first()
-            stream.download(output_path=output_dir, filename=video_id + '.mp4')
+            video_stream = yt.streams.filter(
+                subtype='mp4', only_video=True, adaptive=True
+            ).order_by('resolution').desc().first()
+            audio_stream = yt.streams.filter(
+                only_audio=True
+            ).order_by('abr').desc().first()
+
+            if video_stream is None or audio_stream is None:
+                raise RuntimeError('No adaptive video or audio stream found')
+
+            # Preserve separate tracks; videos_split.sh muxes them into clips.
+            video_stream.download(output_path=output_dir,
+                                  filename=os.path.basename(video_path))
+            audio_extension = audio_stream.subtype or 'audio'
+            audio_only_path = os.path.join(
+                output_dir, '%s.audio.%s' % (video_id, audio_extension)
+            )
+            audio_stream.download(output_path=output_dir,
+                                  filename=os.path.basename(audio_only_path))
         except Exception as e:
             print(e)
             print('Failed to download %s' % (video_id))
